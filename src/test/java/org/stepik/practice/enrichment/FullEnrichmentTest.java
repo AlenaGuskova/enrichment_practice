@@ -9,23 +9,20 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.stepik.practice.enrichment.enricher.Enricher;
-import org.stepik.practice.enrichment.enricher.MSISDNEnricher;
+import org.stepik.practice.enrichment.enricher.EnrichmentStep;
+import org.stepik.practice.enrichment.enricher.EnrichmentStepFacade;
+import org.stepik.practice.enrichment.enricher.implementation.MSISDNEnricher;
 import org.stepik.practice.enrichment.model.EnrichmentType;
 import org.stepik.practice.enrichment.model.Message;
 import org.stepik.practice.enrichment.model.User;
 import org.stepik.practice.enrichment.repository.UserRepository;
-import org.stepik.practice.enrichment.service.FailEnrichmentService;
-import org.stepik.practice.enrichment.service.SuccessEnrichmentService;
-import org.stepik.practice.enrichment.validation.MSISDNMessageValidator;
-import org.stepik.practice.enrichment.validation.MessageValidatorFacade;
+import org.stepik.practice.enrichment.service.EnrichmentServiceImpl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class FullEnrichmentTest {
 
-    private FailEnrichmentService failEnrichmentService;
-    private SuccessEnrichmentService successEnrichmentService;
+    private EnrichmentServiceImpl underTest;
 
     @BeforeEach
     void setUp() {
@@ -34,15 +31,11 @@ class FullEnrichmentTest {
         );
         JsonMapper jsonMapper = new JsonMapper();
 
-        MSISDNEnricher enricher = new MSISDNEnricher(jsonMapper, userRepository);
-        Map<EnrichmentType, Enricher> enrichers =
-                Map.of(enricher.getType(), enricher);
+        EnrichmentStep enricher = new MSISDNEnricher(jsonMapper, userRepository);
+        EnrichmentStepFacade enrichmentStepFacade =
+                new EnrichmentStepFacade(List.of(enricher));
 
-        successEnrichmentService = new SuccessEnrichmentService(enrichers);
-        MessageValidatorFacade validator = new MessageValidatorFacade(
-                List.of(new MSISDNMessageValidator(jsonMapper))
-        );
-        failEnrichmentService = new FailEnrichmentService(successEnrichmentService, validator);
+        underTest = new EnrichmentServiceImpl(enrichmentStepFacade);
     }
 
     @Test
@@ -55,12 +48,12 @@ class FullEnrichmentTest {
 
         IntStream.range(0, numberOfThreads)
                 .forEach(i -> service.submit(() -> {
-                    failEnrichmentService.enrich(inputMessage);
+                    underTest.enrich(inputMessage);
                     latch.countDown();
                 }));
         latch.await();
 
-        assertThat(failEnrichmentService.getFailEnrichedMessages())
+        assertThat(underTest.getFailEnrichedMessages())
                 .hasSize(numberOfThreads);
     }
 
@@ -80,12 +73,12 @@ class FullEnrichmentTest {
 
         IntStream.range(0, numberOfThreads)
                 .forEach(i -> service.submit(() -> {
-                    successEnrichmentService.enrich(inputMessage);
+                    underTest.enrich(inputMessage);
                     latch.countDown();
                 }));
         latch.await();
 
-        assertThat(successEnrichmentService.getSuccessEnrichedMessages())
+        assertThat(underTest.getSuccessEnrichedMessages())
                 .hasSize(numberOfThreads);
     }
 }
